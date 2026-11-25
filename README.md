@@ -1,4 +1,4 @@
-#  VOSK TTS НА GPU (GT 1030, FEDORA) 
+#  установка VOSK TTS НА GPU (GT 1030, FEDORA) 
 
 1. Системные пакеты (драйвер CUDA для GT 1030, Python 3.12 и ffmpeg):
 ```
