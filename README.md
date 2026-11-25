@@ -55,7 +55,7 @@ chmod +x "/home/username/book_to_audio.py"
 ```"/home/username/book_to_audio.py" /путь/к/книге.fb2```
 
 ### Озвучка книги с выбором диктора (-s 0..3) и ускорением (-r 0.85):
-```"/home/username/book_to_audio.py" /путь/к/книге.fb2 -s 2 -r 0.85```
+```"/home/username/book_to_audio.py" /путь/к/книге.fb2 -s 2 -r 0.85``` подробней в ```book_to_audio.py --help```
 
 ### Примечание
 Исползование утилиты proxychains4 обусловлено только Чебурнетом и заблокированными репозиториями Федоры.
