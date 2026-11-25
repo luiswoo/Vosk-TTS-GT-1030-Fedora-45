@@ -1,4 +1,4 @@
-# === ПОЛНАЯ ИНСТРУКЦИЯ: VOSK TTS НА GPU (GT 1030, FEDORA) ===
+#  VOSK TTS НА GPU (GT 1030, FEDORA) 
 
 1. Системные пакеты (драйвер CUDA для GT 1030, Python 3.12 и ffmpeg):
 ```
@@ -42,13 +42,14 @@ echo 'export LD_LIBRARY_PATH=$(python -c '\''import nvidia.cublas, nvidia.cudnn,
 ```
 chmod +x "/home/username/vosk_tts_server.py"
 chmod +x "/home/username/book_to_audio.py"
-
-proxychains4 "/home/username/vosk_tts_server.py"
+```
+6. Повседневное использование (уже БЕЗ прокси и БЕЗ source):
+```
+/home/username/vosk_tts_server.py
 ```
 
-6. Повседневное использование (уже БЕЗ прокси и БЕЗ source):
 ### Запуск HTTP-сервера для Speech Dispatcher (порт 5555, меню выбора 4 голосов):
-```"/home/username/vosk_tts_server.py"```
+```/home/username/vosk_tts_server.py```
 
 ### Пакетная озвучка книги (FB2, EPUB, TXT) в MP3 по главам:
 ```"/home/username/book_to_audio.py" /путь/к/книге.fb2```
@@ -58,4 +59,5 @@ proxychains4 "/home/username/vosk_tts_server.py"
 
 ### Примечание
 Исползование утилиты proxychains4 обусловлено только Чебурнетом и заблокированными репозиториями Федоры.
+
 username должно сооствествовать актуальному имени пользователя
