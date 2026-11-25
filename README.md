@@ -48,7 +48,7 @@ chmod +x "/home/username/book_to_audio.py"
 /home/username/vosk_tts_server.py
 ```
 
-### Запуск HTTP-сервера для Speech Dispatcher (порт 5555, меню выбора 4 голосов):
+### Запуск локального HTTP-сервера для Speech Dispatcher (порт 5555, меню выбора 4 голосов):
 ```/home/username/vosk_tts_server.py```
 
 ### Пакетная озвучка книги (FB2, EPUB, TXT) в MP3 по главам:
