@@ -3,8 +3,8 @@
 1. Системные пакеты (драйвер CUDA для GT 1030, Python 3.12 и ffmpeg):
 ```
 sudo dnf install -y \
-  https://rpmfusion.org(rpm -E %fedora).noarch.rpm \
-  https://rpmfusion.org(rpm -E %fedora).noarch.rpm
+  https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+  https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
 
 sudo dnf install -y xorg-x11-drv-nvidia-580xx-cuda python3.12 ffmpeg
 ```
