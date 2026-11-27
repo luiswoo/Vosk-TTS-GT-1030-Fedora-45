@@ -1,4 +1,4 @@
-#!/home/username/vosk-env/bin/python  ## username должно быть заменено на актуального пользователя
+#!/home/ivan/vosk-env/bin/python
 import os
 import sys
 
@@ -362,14 +362,17 @@ def main():
         if intro_parts:
             chapters.insert(0, ("00_Описание", [" ".join(intro_parts)]))
 
-    if args.outdir:
-        out_dir = Path(args.outdir).expanduser().resolve()
+    if fb2_meta.get("author") and fb2_meta.get("book_title"):
+        folder_name = sanitize_filename(f"{fb2_meta['author']} - {fb2_meta['book_title']}")
     else:
-        if fb2_meta.get("author") and fb2_meta.get("book_title"):
-            folder_name = sanitize_filename(f"{fb2_meta['author']} - {fb2_meta['book_title']}")
-        else:
-            folder_name = f"{book_path.stem}_audio"
-        out_dir = book_path.parent / folder_name
+        folder_name = f"{book_path.stem}_audio"
+
+    if args.outdir:
+        base_dir = Path(args.outdir).expanduser().resolve()
+    else:
+        base_dir = book_path.parent
+
+    out_dir = base_dir / folder_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     speaker_id, speaker_desc = SPEAKERS[args.speaker]
