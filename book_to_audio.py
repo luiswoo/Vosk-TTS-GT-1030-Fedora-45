@@ -26,13 +26,13 @@ from ru_normalizr import Normalizer, NormalizeOptions
 # ===== НАСТРОЙКИ РЕЧИ ПО УМОЛЧАНИЮ =====
 MODEL_NAME = "vosk-model-tts-ru-0.7-multi"
 SAMPLE_RATE = 22050
-LENGTH_SCALE = 1.3
-NOISE_SCALE = 0.667
-NOISE_W_SCALE = 0.8
-VOLUME = 1.0
-SENTENCE_SILENCE = 0.35
-PARAGRAPH_SILENCE = 0.55
-MAX_CHUNK_CHARS = 240
+LENGTH_SCALE = 1.3        # Базовая скорость: < 1.0 быстрее, > 1.0 медленнее
+NOISE_SCALE = 0.667       # "Волнистость" голоса (noise_level)
+NOISE_W_SCALE = 0.8       # Вариативность длительности фонем (duration_noise_level)
+VOLUME = 1.0              # Громкость (множитель амплитуды)
+SENTENCE_SILENCE = 0.3   # Пауза между предложениями, секунды
+PARAGRAPH_SILENCE = 0.55 # Пауза между абзацами, секунды
+MAX_CHUNK_CHARS = 240    # максимальное число символов за такт
 
 SPEAKERS = {
     1: (0, "Женский голос 1 — Ирина (speaker_id=0)"),
