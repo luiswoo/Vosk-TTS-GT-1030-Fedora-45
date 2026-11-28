@@ -1,4 +1,4 @@
-#!/home/username/vosk-env/bin/python ##usename должно быть актуальным пользователем
+#!/home/username/vosk-env/bin/python ##username должно быть актуальным пользователем
 import os
 import sys
 
@@ -127,9 +127,21 @@ def _fb2_text(elem) -> str:
 
 
 def _load_fb2(file_path: Path):
-    with open(file_path, "rb") as fh:
-        return ET.parse(fh)
-
+    """Загружает FB2 из обычного файла или из .fb2.zip архива."""
+    if file_path.suffix.lower() == '.zip':
+        # Это fb2.zip — нужно распаковать
+        with zipfile.ZipFile(file_path, 'r') as zf:
+            # Ищем XML-файл внутри архива
+            fb2_files = [f for f in zf.namelist() if f.endswith('.fb2')]
+            if not fb2_files:
+                raise ValueError(f"В архиве {file_path.name} не найден файл .fb2")
+            # Читаем первый найденный FB2
+            with zf.open(fb2_files[0]) as fb2_fh:
+                return ET.parse(fb2_fh)
+    else:
+        # Обычный .fb2 файл
+        with open(file_path, "rb") as fh:
+            return ET.parse(fh)
 
 def parse_fb2_meta(file_path: Path) -> dict:
     meta = {
@@ -318,16 +330,25 @@ def main():
         sys.exit(1)
 
     ext = book_path.suffix.lower()
+    if ext == '.zip':
+        # Проверяем, это fb2.zip или что-то другое
+        with zipfile.ZipFile(book_path, 'r') as zf:
+            if any(f.endswith('.fb2') for f in zf.namelist()):
+                ext = '.fb2.zip'
+            else:
+                print(f"Ошибка: архив {book_path.name} не содержит .fb2 файлов")
+                sys.exit(1)
+
     print(f"Чтение книги: {book_path.name}...")
 
     fb2_meta = {}
-    if ext == ".fb2":
+    if ext in ('.fb2', '.fb2.zip'):
         fb2_meta = parse_fb2_meta(book_path)
         chapters = parse_fb2(book_path)
-    elif ext == ".epub":
+    elif ext == '.epub':
         chapters = parse_epub(book_path)
     else:
-        print(f"Ошибка: формат '{ext}' не поддерживается.")
+        print(f"Ошибка: формат '{ext}' не поддерживается. Используйте .fb2, .fb2.zip или .epub.")
         sys.exit(1)
 
     if not chapters:
