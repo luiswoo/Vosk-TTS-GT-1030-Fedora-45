@@ -1,4 +1,4 @@
-#!/home/ivan/vosk-env/bin/python
+#!/home/username/vosk-env/bin/python ##username должно быть актуальным пользователем
 import os
 import sys
 
@@ -20,8 +20,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import numpy as np
-from num2words import num2words
 from vosk_tts import Model, Synth
+from ru_normalizr import Normalizer, NormalizeOptions  # <-- Добавлено
 
 # ===== НАСТРОЙКИ РЕЧИ ПО УМОЛЧАНИЮ =====
 MODEL_NAME = "vosk-model-tts-ru-0.7-multi"
@@ -30,7 +30,7 @@ LENGTH_SCALE = 1.3        # Скорость: < 1.0 быстрее, > 1.0 мед
 NOISE_SCALE = 0.667       # Выразительность голоса
 NOISE_W_SCALE = 0.8       # Вариативность длительности фонем
 VOLUME = 1.0              # Громкость
-SENTENCE_SILENCE = 0.25   # Пауза между предложениями (сек)
+SENTENCE_SILENCE = 0.35   # Пауза между предложениями (сек)
 PARAGRAPH_SILENCE = 0.55  # Пауза между абзацами (сек)
 MAX_CHUNK_CHARS = 240     # Лимит символов на один проход GPU
 
@@ -43,50 +43,56 @@ SPEAKERS = {
     5: (4, "Мужской голос 2 (speaker_id=4)"),
 }
 
-LATIN_TO_CYR = str.maketrans({
-    'a': 'а', 'b': 'б', 'c': 'ц', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
-    'h': 'х', 'i': 'и', 'j': 'дж', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
-    'o': 'о', 'p': 'п', 'q': 'к', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
-    'v': 'в', 'w': 'в', 'x': 'кс', 'y': 'и', 'z': 'з',
-    'A': 'А', 'B': 'Б', 'C': 'Ц', 'D': 'Д', 'E': 'Е', 'F': 'Ф', 'G': 'Г',
-    'H': 'Х', 'I': 'И', 'J': 'Дж', 'K': 'К', 'L': 'Л', 'M': 'М', 'N': 'Н',
-    'O': 'О', 'P': 'П', 'Q': 'К', 'R': 'Р', 'S': 'С', 'T': 'Т', 'U': 'У',
-    'V': 'В', 'W': 'В', 'X': 'Кс', 'Y': 'И', 'Z': 'З',
-})
+# ===== ИНИЦИАЛИЗАЦИЯ НОРМАЛИЗАТОРА =====
+# Создаём нормализатор в режиме TTS (рекомендуется для синтеза речи)
+# Режим TTS включает: нормализацию чисел, дат, сокращений, латиницы, CAPS
+NORMALIZER = Normalizer(NormalizeOptions.tts())
 
-DIGITS_WORDS = {
-    '0': 'ноль', '1': 'один', '2': 'два', '3': 'три', '4': 'четыре',
-    '5': 'пять', '6': 'шесть', '7': 'семь', '8': 'восемь', '9': 'девять'
-}
-
-
-def replace_numbers(text: str) -> str:
-    def _num_to_ru(match):
-        raw_num = match.group(0)
-        digits_only = re.sub(r'\D', '', raw_num)
-        if len(digits_only) > 12:
-            return " ".join(DIGITS_WORDS[d] for d in digits_only if d in DIGITS_WORDS)
-        try:
-            normalized = raw_num.replace(',', '.')
-            if '.' in normalized:
-                return num2words(float(normalized), lang='ru')
-            return num2words(int(normalized), lang='ru')
-        except Exception:
-            return " ".join(DIGITS_WORDS[d] for d in digits_only if d in DIGITS_WORDS)
-
-    return re.sub(r'(?<![а-яА-Яa-zA-Z0-9_])-?\d+(?:[.,]\d+)?(?![а-яА-Яa-zA-Z0-9_])', _num_to_ru, text)
-
+# Регулярное выражение для санитизации после нормализации
+# Vosk TTS g2p понимает только: [,.?!;:"() ] и -
+_TTS_ALLOWED_PATTERN = re.compile(r'[^а-яА-ЯёЁ\s.,!?;:"()\-]')
 
 def clean_text(text: str) -> str:
-    text = text.replace('…', '. ').replace('...', '. ')
-    text = replace_numbers(text)
-    text = re.sub(r'\d', lambda m: f" {DIGITS_WORDS[m.group(0)]} ", text)
-    text = text.translate(LATIN_TO_CYR)
-    text = re.sub(r'[^а-яА-ЯёЁ\s.,!?;:\-—()]', ' ', text)
-    return re.sub(r'\s+', ' ', text).strip()
+    """
+    Нормализует текст через ru-normalizr и санитизирует для Vosk TTS.
+    
+    Процесс:
+    1. Нормализация через ru-normalizr (числа → слова, латиница → кириллица, и т.д.)
+    2. Санитизация: удаляем символы, которые Vosk g2p не понимает
+    3. Нормализация пробелов
+    """
+    # 1. Нормализация через ru-normalizr
+    normalized = NORMALIZER.normalize(text)
+    
+    # 2. Санитизация для Vosk TTS
+    # Заменяем спецсимволы, которые Vosk не поймёт
+    replacements = [
+        ('…', '...'),      # Многоточие → три точки
+        ('–', '-'),        # Длинное тире → дефис
+        ('—', '-'),        # Длинное тире → дефис
+        ('„', '"'),        # Русские кавычки
+        ('"', '"'),
+        ('«', '"'),        # Русские кавычки
+        ('»', '"'),
+    ]
+    for old, new in replacements:
+        normalized = normalized.replace(old, new)
+    
+    # Удаляем символы, которые Vosk g2p не понимает
+    sanitized = _TTS_ALLOWED_PATTERN.sub(' ', normalized)
+    
+    # 3. Нормализация пробелов
+    return re.sub(r'\s+', ' ', sanitized).strip()
 
 
 def split_into_safe_chunks(text: str, max_len: int = MAX_CHUNK_CHARS):
+    """
+    Разбивает текст на чанки для GPU синтеза.
+    
+    Стратегия:
+    1. Сначала разбиваем по предложениям (.!?)
+    2. Если предложение длиннее max_len, разбиваем по словам
+    """
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     chunks = []
     for sent in sentences:
@@ -96,6 +102,7 @@ def split_into_safe_chunks(text: str, max_len: int = MAX_CHUNK_CHARS):
         if len(sent) <= max_len:
             chunks.append(sent)
         else:
+            # Разбиваем длинное предложение по словам
             words = sent.split(' ')
             buf = ""
             for w in words:
@@ -111,6 +118,7 @@ def split_into_safe_chunks(text: str, max_len: int = MAX_CHUNK_CHARS):
 
 
 def sanitize_filename(name: str) -> str:
+    """Очищает имя файла от недопустимых символов."""
     name = re.sub(r'[\\/*?:"<>|]', '', name).strip()
     name = re.sub(r'\s+', '_', name)
     return name[:60] or "Глава"
@@ -390,12 +398,19 @@ def main():
         ann = fb2_meta["annotation"]
         print(f"Аннотация: {ann[:200]}{'…' if len(ann) > 200 else ''}")
     print(f"Диктор: {args.speaker} ({speaker_desc}) | Папка вывода: {out_dir}")
+    print(f"Нормализатор: ru-normalizr (режим TTS) | Python: {sys.version.split()[0]}")
 
     print(f"\nЗагрузка модели {MODEL_NAME} на GPU (GT 1030)...")
     model = Model(model_name=MODEL_NAME)
     synth = Synth(model)
+    
+    # Прогрев GPU
     _ = synth.synth_audio("Прогрев видеокарты.", speaker_id=speaker_id)
-
+    
+    # Прогрев нормализатора (опционально, но рекомендуется для производительности)
+    print("Прогрев нормализатора...")
+    _ = NORMALIZER.normalize("Тест нормализации: 123, 45.6%, 2024 год.")
+    
     speech_rate = 1.0 / args.rate if args.rate > 0 else 1.0
     sent_silence = np.zeros(int(SAMPLE_RATE * SENTENCE_SILENCE), dtype=np.int16).tobytes()
     para_silence = np.zeros(int(SAMPLE_RATE * PARAGRAPH_SILENCE), dtype=np.int16).tobytes()
