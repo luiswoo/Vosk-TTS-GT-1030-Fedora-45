@@ -64,13 +64,27 @@ normalizer = Normalizer(NormalizeOptions.tts())
 
 def clean_text(text: str) -> str:
     """Нормализует текст для TTS с помощью ru-normalizr."""
-    # normalizer сам переведет числа, даты, латиницу и сокращения
+    # Нормализация через ru-normalizr
     text = normalizer.normalize(text)
     
-    # Финальная чистка от специфичных символов, если модель Vosk их не любит
-    # (ru-normalizr уже убирает большинство мусора, но оставляем только кириллицу и знаки препинания)
+    # ЯВНО удаляем кавычки (не заменяем на пробелы, а удаляем полностью)
+    replacements = [
+        ('…', '...'),
+        ('–', '-'),
+        ('—', '-'),
+        ('„', ''),    # Русские кавычки
+        ('"', ''),    # Русские кавычки
+        ('«', ''),    # Ёлочки
+        ('»', ''),    # Ёлочки
+        ('"', ''),    # Обычные кавычки
+    ]
+    for old, new in replacements:
+        text = text.replace(old, new)
+    
+    # Финальная чистка
     text = re.sub(r'[^а-яА-ЯёЁ\s.,!?;:\-—()]', ' ', text)
     return re.sub(r'\s+', ' ', text).strip()
+
 
 def split_sentences(text: str):
     """Разбивает текст на предложения для вставки пауз SENTENCE_SILENCE."""
@@ -90,7 +104,6 @@ def calc_speech_rate(sd_rate: float) -> float:
 
 def synthesize_wav(text: str, sd_rate: float = 0.0) -> bytes:
     """Генерирует WAV-байты из текста на GPU с учетом настроек речи."""
-    # Нормализуем весь текст сразу ДО разбивки на предложения
     text = clean_text(text)
     if not text:
         text = " "
@@ -108,11 +121,11 @@ def synthesize_wav(text: str, sd_rate: float = 0.0) -> bytes:
     with voice_lock:
         spk_id = current_speaker_id
         for idx, sentence in enumerate(sentences):
-            # Повторно вызывать clean_text внутри цикла уже не нужно!
-            if not sentence.strip():
+            clean_sent = clean_text(sentence)
+            if not clean_sent:
                 continue
             raw = current_synth.synth_audio(
-                sentence,
+                clean_sent,
                 speaker_id=spk_id,
                 noise_level=NOISE_SCALE,
                 speech_rate=speech_rate,
