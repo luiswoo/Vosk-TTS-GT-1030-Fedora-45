@@ -19,8 +19,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 import numpy as np
-from num2words import num2words
 from vosk_tts import Model, Synth
+
+# Импортируем нормализатор
+from ru_normalizr import Normalizer, NormalizeOptions
 
 # ===== НАСТРОЙКИ СЕРВЕРА =====
 HOST = "127.0.0.1"
@@ -51,55 +53,29 @@ current_speaker_id = 0
 current_voice_name = SPEAKERS[1][1]
 voice_lock = threading.Lock()
 
-LATIN_TO_CYR = str.maketrans({
-    'a': 'а', 'b': 'б', 'c': 'ц', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
-    'h': 'х', 'i': 'и', 'j': 'дж', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
-    'o': 'о', 'p': 'п', 'q': 'к', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
-    'v': 'в', 'w': 'в', 'x': 'кс', 'y': 'и', 'z': 'з',
-    'A': 'А', 'B': 'Б', 'C': 'Ц', 'D': 'Д', 'E': 'Е', 'F': 'Ф', 'G': 'Г',
-    'H': 'Х', 'I': 'И', 'J': 'Дж', 'K': 'К', 'L': 'Л', 'M': 'М', 'N': 'Н',
-    'O': 'О', 'P': 'П', 'Q': 'К', 'R': 'Р', 'S': 'С', 'T': 'Т', 'U': 'У',
-    'V': 'В', 'W': 'В', 'X': 'Кс', 'Y': 'И', 'Z': 'З',
-})
+# ВАЖНО: Инициализируем нормализатор ОДИН РАЗ при старте скрипта!
+# Это уберет задержки на загрузку словарей при каждом запросе.
+print("Инициализация ru-normalizr (загрузка словарей в ОЗУ)...")
+normalizer = Normalizer(NormalizeOptions.tts())
 
-DIGITS_WORDS = {
-    '0': 'ноль', '1': 'один', '2': 'два', '3': 'три', '4': 'четыре',
-    '5': 'пять', '6': 'шесть', '7': 'семь', '8': 'восемь', '9': 'девять'
-}
-
-
-def replace_numbers(text: str) -> str:
-    """Преобразует целые и дробные числа в русские слова."""
-    def _num_to_ru(match):
-        raw_num = match.group(0)
-        digits_only = re.sub(r'\D', '', raw_num)
-        if len(digits_only) > 12:
-            return " ".join(DIGITS_WORDS[d] for d in digits_only if d in DIGITS_WORDS)
-        try:
-            normalized = raw_num.replace(',', '.')
-            if '.' in normalized:
-                return num2words(float(normalized), lang='ru')
-            return num2words(int(normalized), lang='ru')
-        except Exception:
-            return " ".join(DIGITS_WORDS[d] for d in digits_only if d in DIGITS_WORDS)
-
-    return re.sub(r'(?<![а-яА-Яa-zA-Z0-9_])-?\d+(?:[.,]\d+)?(?![а-яА-Яa-zA-Z0-9_])', _num_to_ru, text)
-
+# ==========================================
+# ФУНКЦИИ ОБРАБОТКИ ТЕКСТА
+# ==========================================
 
 def clean_text(text: str) -> str:
-    """Преобразует числа в слова и оставляет только поддерживаемые символы."""
-    text = replace_numbers(text)
-    text = re.sub(r'\d', lambda m: f" {DIGITS_WORDS[m.group(0)]} ", text)
-    text = text.translate(LATIN_TO_CYR)
+    """Нормализует текст для TTS с помощью ru-normalizr."""
+    # normalizer сам переведет числа, даты, латиницу и сокращения
+    text = normalizer.normalize(text)
+    
+    # Финальная чистка от специфичных символов, если модель Vosk их не любит
+    # (ru-normalizr уже убирает большинство мусора, но оставляем только кириллицу и знаки препинания)
     text = re.sub(r'[^а-яА-ЯёЁ\s.,!?;:\-—()]', ' ', text)
     return re.sub(r'\s+', ' ', text).strip()
-
 
 def split_sentences(text: str):
     """Разбивает текст на предложения для вставки пауз SENTENCE_SILENCE."""
     parts = re.split(r'(?<=[.!?…])\s+', text.strip())
     return [p.strip() for p in parts if p.strip()]
-
 
 def calc_speech_rate(sd_rate: float) -> float:
     """Переводит sd_rate (-100..+100 из Speech Dispatcher) + LENGTH_SCALE в speech_rate для Vosk."""
@@ -114,6 +90,7 @@ def calc_speech_rate(sd_rate: float) -> float:
 
 def synthesize_wav(text: str, sd_rate: float = 0.0) -> bytes:
     """Генерирует WAV-байты из текста на GPU с учетом настроек речи."""
+    # Нормализуем весь текст сразу ДО разбивки на предложения
     text = clean_text(text)
     if not text:
         text = " "
@@ -131,11 +108,11 @@ def synthesize_wav(text: str, sd_rate: float = 0.0) -> bytes:
     with voice_lock:
         spk_id = current_speaker_id
         for idx, sentence in enumerate(sentences):
-            clean_sent = clean_text(sentence)
-            if not clean_sent:
+            # Повторно вызывать clean_text внутри цикла уже не нужно!
+            if not sentence.strip():
                 continue
             raw = current_synth.synth_audio(
-                clean_sent,
+                sentence,
                 speaker_id=spk_id,
                 noise_level=NOISE_SCALE,
                 speech_rate=speech_rate,
