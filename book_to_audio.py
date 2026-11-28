@@ -1,4 +1,4 @@
-#!/home/username/vosk-env/bin/python ##username должно быть актуальным пользователем
+#!/home/username/vosk-env/bin/python ##usename должно быть актуальным пользователем
 import os
 import sys
 
@@ -21,20 +21,19 @@ from pathlib import Path
 
 import numpy as np
 from vosk_tts import Model, Synth
-from ru_normalizr import Normalizer, NormalizeOptions  # <-- Добавлено
+from ru_normalizr import Normalizer, NormalizeOptions
 
 # ===== НАСТРОЙКИ РЕЧИ ПО УМОЛЧАНИЮ =====
 MODEL_NAME = "vosk-model-tts-ru-0.7-multi"
 SAMPLE_RATE = 22050
-LENGTH_SCALE = 1.3        # Скорость: < 1.0 быстрее, > 1.0 медленнее
-NOISE_SCALE = 0.667       # Выразительность голоса
-NOISE_W_SCALE = 0.8       # Вариативность длительности фонем
-VOLUME = 1.0              # Громкость
-SENTENCE_SILENCE = 0.35   # Пауза между предложениями (сек)
-PARAGRAPH_SILENCE = 0.55  # Пауза между абзацами (сек)
-MAX_CHUNK_CHARS = 240     # Лимит символов на один проход GPU
+LENGTH_SCALE = 1.3
+NOISE_SCALE = 0.667
+NOISE_W_SCALE = 0.8
+VOLUME = 1.0
+SENTENCE_SILENCE = 0.35
+PARAGRAPH_SILENCE = 0.55
+MAX_CHUNK_CHARS = 240
 
-# Нумерация для пользователя (1..5) -> (speaker_id модели 0..4, описание)
 SPEAKERS = {
     1: (0, "Женский голос 1 — Ирина (speaker_id=0)"),
     2: (1, "Женский голос 2 — Наташа (speaker_id=1)"),
@@ -44,55 +43,37 @@ SPEAKERS = {
 }
 
 # ===== ИНИЦИАЛИЗАЦИЯ НОРМАЛИЗАТОРА =====
-# Создаём нормализатор в режиме TTS (рекомендуется для синтеза речи)
-# Режим TTS включает: нормализацию чисел, дат, сокращений, латиницы, CAPS
 NORMALIZER = Normalizer(NormalizeOptions.tts())
 
-# Регулярное выражение для санитизации после нормализации
-# Vosk TTS g2p понимает только: [,.?!;:"() ] и -
-_TTS_ALLOWED_PATTERN = re.compile(r'[^а-яА-ЯёЁ\s.,!?;:"()\-]')
+# Регулярное выражение для санитизации (кавычки ИСКЛЮЧЕНЫ)
+_TTS_ALLOWED_PATTERN = re.compile(r'[^а-яА-ЯёЁ\s.,!?;:()\-]')
+
 
 def clean_text(text: str) -> str:
-    """
-    Нормализует текст через ru-normalizr и санитизирует для Vosk TTS.
-    
-    Процесс:
-    1. Нормализация через ru-normalizr (числа → слова, латиница → кириллица, и т.д.)
-    2. Санитизация: удаляем символы, которые Vosk g2p не понимает
-    3. Нормализация пробелов
-    """
-    # 1. Нормализация через ru-normalizr
+    """Нормализует текст через ru-normalizr и санитизирует для Vosk TTS."""
+    # 1. Нормализация
     normalized = NORMALIZER.normalize(text)
     
-    # 2. Санитизация для Vosk TTS
-    # Заменяем спецсимволы, которые Vosk не поймёт
+    # 2. Санитизация
     replacements = [
-        ('…', '...'),      # Многоточие → три точки
-        ('–', '-'),        # Длинное тире → дефис
-        ('—', '-'),        # Длинное тире → дефис
-        ('„', '"'),        # Русские кавычки
-        ('"', '"'),
-        ('«', '"'),        # Русские кавычки
-        ('»', '"'),
+        ('…', '...'),
+        ('–', '-'),
+        ('—', '-'),
+        ('„', ''),
+        ('"', ''),
+        ('«', ''),
+        ('»', ''),
+        ('"', ''),
     ]
     for old, new in replacements:
         normalized = normalized.replace(old, new)
     
-    # Удаляем символы, которые Vosk g2p не понимает
     sanitized = _TTS_ALLOWED_PATTERN.sub(' ', normalized)
-    
-    # 3. Нормализация пробелов
     return re.sub(r'\s+', ' ', sanitized).strip()
 
 
 def split_into_safe_chunks(text: str, max_len: int = MAX_CHUNK_CHARS):
-    """
-    Разбивает текст на чанки для GPU синтеза.
-    
-    Стратегия:
-    1. Сначала разбиваем по предложениям (.!?)
-    2. Если предложение длиннее max_len, разбиваем по словам
-    """
+    """Разбивает текст на чанки для GPU синтеза."""
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     chunks = []
     for sent in sentences:
@@ -102,7 +83,6 @@ def split_into_safe_chunks(text: str, max_len: int = MAX_CHUNK_CHARS):
         if len(sent) <= max_len:
             chunks.append(sent)
         else:
-            # Разбиваем длинное предложение по словам
             words = sent.split(' ')
             buf = ""
             for w in words:
@@ -287,7 +267,6 @@ def parse_epub(file_path: Path):
             raw_html = zf.read(fname).decode('utf-8', errors='ignore')
             raw_html = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', raw_html, flags=re.S | re.I)
 
-            # Заголовок: первый <h1>/<h2>/<h3>, иначе первый абзац
             heading = ""
             m = re.search(r'<h[1-3][^>]*>(.*?)</h[1-3]>', raw_html, flags=re.S | re.I)
             if m:
@@ -307,7 +286,7 @@ def parse_epub(file_path: Path):
 
 
 def convert_wav_to_mp3(wav_path: Path, qscale: str = "4"):
-    """VBR MP3 через libmp3lame. qscale: 0 (лучшее) .. 9 (худшее). 4 — оптимум для речи."""
+    """VBR MP3 через libmp3lame."""
     mp3_path = wav_path.with_suffix(".mp3")
     res = subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav_path),
@@ -328,7 +307,7 @@ def main():
         choices=list(SPEAKERS.keys()),
         help="Номер голоса: 1,2,3 (жен), 4,5 (муж)"
     )
-    parser.add_argument("-r", "--rate", type=float, default=LENGTH_SCALE, help="LENGTH_SCALE (1.0=норма, 0.85=быстрее, 1.2=медленнее)")
+    parser.add_argument("-r", "--rate", type=float, default=LENGTH_SCALE, help="LENGTH_SCALE")
     parser.add_argument("-o", "--outdir", default=None, help="Папка для сохранения аудиокниги")
     parser.add_argument("--no-mp3", action="store_true", help="Не сжимать в MP3, оставить WAV")
     args = parser.parse_args()
@@ -348,14 +327,13 @@ def main():
     elif ext == ".epub":
         chapters = parse_epub(book_path)
     else:
-        print(f"Ошибка: формат '{ext}' не поддерживается. Используйте .fb2 или .epub.")
+        print(f"Ошибка: формат '{ext}' не поддерживается.")
         sys.exit(1)
 
     if not chapters:
-        print("Ошибка: не удалось извлечь ни одной главы. Проверьте структуру файла.")
+        print("Ошибка: не удалось извлечь ни одной главы.")
         sys.exit(2)
 
-    # Озвучка метаданных как первой "главы"
     if fb2_meta.get("book_title") or fb2_meta.get("annotation") or fb2_meta.get("author"):
         intro_parts = []
         if fb2_meta.get("author"):
@@ -404,10 +382,9 @@ def main():
     model = Model(model_name=MODEL_NAME)
     synth = Synth(model)
     
-    # Прогрев GPU
+    print("Прогрев GPU...")
     _ = synth.synth_audio("Прогрев видеокарты.", speaker_id=speaker_id)
     
-    # Прогрев нормализатора (опционально, но рекомендуется для производительности)
     print("Прогрев нормализатора...")
     _ = NORMALIZER.normalize("Тест нормализации: 123, 45.6%, 2024 год.")
     
@@ -415,7 +392,6 @@ def main():
     sent_silence = np.zeros(int(SAMPLE_RATE * SENTENCE_SILENCE), dtype=np.int16).tobytes()
     para_silence = np.zeros(int(SAMPLE_RATE * PARAGRAPH_SILENCE), dtype=np.int16).tobytes()
 
-    # Проверка ffmpeg и libmp3lame
     has_ffmpeg = subprocess.run(["which", "ffmpeg"], capture_output=True).returncode == 0
     has_lame = False
     if has_ffmpeg:
